@@ -110,3 +110,23 @@ ecf0143f041f   postgres:15.2-alpine   "docker-entrypoint.s…"   19 minutes ago 
 18c8f8804e4d   maildev/maildev        "bin/maildev"            19 minutes ago   Up 19 minutes (unhealthy)   0.0.0.0:1025->1025/tcp, 0.0.0.0:1080->1080/tcp   c-ms-mail-dev
 9b186bdc8b97   mongo:6-jammy          "docker-entrypoint.s…"   19 minutes ago   Up 19 minutes               0.0.0.0:27017->27017/tcp                         c-ms-mongodb
 ````
+
+## Crea el servidor de configuraciones
+
+````xml
+<!--Spring Boot 3.3.1-->
+<!--Java 21-->
+<!--spring-cloud.version 2023.0.2-->
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-config-server</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+````
