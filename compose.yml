@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:15.2-alpine
+    container_name: c-ms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: magadiflo
+      POSTGRES_PASSWORD: magadiflo
+    ports:
+      - 5435:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ms-e-commerce-net
+
+  mongodb:
+    image: mongo:6-jammy
+    container_name: c-ms-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: magadiflo
+      MONGO_INITDB_ROOT_PASSWORD: magadiflo
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ms-e-commerce-net
+
+  mail-dev:
+    image: maildev/maildev
+    container_name: c-ms-mail-dev
+    restart: unless-stopped
+    ports:
+      - 1080:1080
+      - 1025:1025
+    networks:
+      - ms-e-commerce-net
+
+volumes:
+  postgres_data:
+    name: postgres_data
+  mongo_data:
+    name: mongo_data
+
+networks:
+  ms-e-commerce-net:
+    name: ms-e-commerce-net
