@@ -80,6 +80,15 @@ networks:
     name: ms-e-commerce-net
 ````
 
+**IMPORTANTE**
+> Para este proyecto usaremos una sola instancia del motor de base de datos de Postgres y dentro de él crearemos las
+> distintas bases de datos para los distintos dominios de la aplicación. Esto lo hago para ahorrar recursos, dado que
+> ejecutaremos distintos microservicios durante el desarrollo de este proyecto, de esa manera reduciremos el consumo
+> de recursos. Por otro lado, si vamos a ir a un entorno de producción o si nuestra pc tiene los recursos suficientes
+> `debemos asegurarnos de que cada microservicio tenga su propia instancia de motor de base de datos`, en otras
+> palabras, cada microservicio debería apuntar a un contenedor único que esté ejecutando postgres sql y no tenerlo
+> compartido como lo vamos a realizar en este proyecto.
+
 **NOTA**
 > En el tutorial original se han agregado dos servicios adicionales: `pg-admin` y `mongo-express`, pero en mi caso no
 > lo he agregado, dado que usaré las aplicaciones que tengo instaladas en mi pc: `DBeaver` y `Studio 3T`.
