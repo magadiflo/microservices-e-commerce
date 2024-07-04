@@ -295,3 +295,358 @@ Si revisamos los datos que contiene la tabla `flyway_schema_history` veremos que
 ejecución de la primera migración:
 
 ![03.first_migration.png](assets/03.first_migration.png)
+
+## Implementa Product Service
+
+Empezaremos creando el repositorio para la entidad Product. Observemos que hemos creado un método utilizando
+el `Query Method` de `Spring Data JPA`, es decir, palabras claves que nos ayudan a construir la consulta a través
+del nombre del método y que por detrás Spring Data JPA se encargará de construir la consulta.
+
+````java
+public interface ProductRepository extends JpaRepository<Product, Long> {
+    List<Product> findAllByIdInOrderById(List<Long> productIds);
+}
+````
+
+A continuación crearemos un conjunto de DTOs que nos ayudarán a recibir datos o a exponerlos a través de endpoints:
+
+````java
+public record ProductRequest(@NotBlank(message = "El nombre del producto es requerido")
+                             String name,
+
+                             @NotBlank(message = "La descripción del producto es requerido")
+                             String description,
+
+                             @Positive(message = "La cantidad disponible debe ser positivo")
+                             @NotNull(message = "La cantidad disponible no debe ser nulo")
+                             Double availableQuantity,
+
+                             @Positive(message = "El precio debe ser positivo")
+                             @NotNull(message = "El precio no debe ser nulo")
+                             BigDecimal price,
+
+                             @NotNull(message = "La categoría del producto es requerido")
+                             Long categoryId) {
+}
+````
+
+````java
+public record ProductPurchaseRequest(@NotNull(message = "El producto es obligatorio")
+                                     Long productId,
+
+                                     @Positive(message = "La cantidad debe ser positiva")
+                                     @NotNull(message = "La cantidad es obligatorio")
+                                     Double quantity) {
+}
+````
+
+````java
+
+@ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+public class ProductResponse {
+    private Long id;
+    private String name;
+    private String description;
+    private Double availableQuantity;
+    private BigDecimal price;
+    private Long categoryId;
+    private String categoryName;
+    private String categoryDescription;
+}
+````
+
+````java
+
+@ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+public class ProductPurchaseResponse {
+    private Long productId;
+    private String name;
+    private String description;
+    private BigDecimal price;
+    private double quantity;
+}
+````
+
+A continuación procedemos a crear los manejadores de excepciones:
+
+````java
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<String> handle(EntityNotFoundException exception) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(exception.getMessage());
+    }
+
+    @ExceptionHandler(ProductPurchaseException.class)
+    public ResponseEntity<String> handle(ProductPurchaseException exception) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(exception.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handle(MethodArgumentNotValidException exception) {
+        var errors = new HashMap<String, String>();
+        exception.getBindingResult().getAllErrors().forEach(error -> {
+            String field = ((FieldError) error).getField();
+            String defaultMessage = error.getDefaultMessage();
+            errors.computeIfAbsent(field, fieldKey -> defaultMessage);
+        });
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(errors));
+    }
+
+}
+````
+
+````java
+public record ErrorResponse(Map<String, String> errors) {
+}
+````
+
+Observemos que la clase `GlobalExceptionHandler` está capturando la excepción personalizada `ProductPurchaseException`,
+así que es necesario crearla.
+
+````java
+public class ProductPurchaseException extends RuntimeException {
+    public ProductPurchaseException(String message) {
+        super(message);
+    }
+}
+````
+
+Antes de pasar a la implementación del servicio de productos necesitamos crear una clase que mapeará nuestra entidad a
+objetos dto y viceversa:
+
+````java
+
+@Component
+public class ProductMapper {
+
+    public Product toProduct(ProductRequest request) {
+        return Product.builder()
+                .name(request.name())
+                .description(request.description())
+                .availableQuantity(request.availableQuantity())
+                .price(request.price())
+                .category(Category.builder()
+                        .id(request.categoryId())
+                        .build())
+                .build();
+    }
+
+    public ProductResponse toProductResponse(Product product) {
+        return ProductResponse.builder()
+                .id(product.getId())
+                .name(product.getName())
+                .description(product.getDescription())
+                .availableQuantity(product.getAvailableQuantity())
+                .price(product.getPrice())
+                .categoryId(product.getCategory().getId())
+                .categoryName(product.getCategory().getName())
+                .categoryDescription(product.getCategory().getDescription())
+                .build();
+    }
+
+    public ProductPurchaseResponse toProductPurchaseResponse(Product productDB, Double quantity) {
+        return ProductPurchaseResponse.builder()
+                .productId(productDB.getId())
+                .name(productDB.getName())
+                .description(productDB.getDescription())
+                .price(productDB.getPrice())
+                .quantity(quantity)
+                .build();
+    }
+}
+````
+
+Ahora procedemos a crear nuestra clase de servicio con la implementación de la lógica de negocio:
+
+````java
+public interface ProductService {
+    List<ProductResponse> findAllProducts();
+
+    ProductResponse findProduct(Long productId);
+
+    Long createProduct(ProductRequest request);
+
+    List<ProductPurchaseResponse> purchaseProducts(List<ProductPurchaseRequest> request);
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class ProductServiceImpl implements ProductService {
+
+    private final ProductRepository productRepository;
+    private final ProductMapper productMapper;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductResponse> findAllProducts() {
+        return this.productRepository.findAll().stream()
+                .map(this.productMapper::toProductResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProductResponse findProduct(Long productId) {
+        return this.productRepository.findById(productId)
+                .map(this.productMapper::toProductResponse)
+                .orElseThrow(() -> new EntityNotFoundException("No se encontró el producto con id " + productId));
+    }
+
+    @Override
+    @Transactional
+    public Long createProduct(ProductRequest request) {
+        Product product = this.productMapper.toProduct(request);
+        return this.productRepository.save(product).getId();
+    }
+
+    @Override
+    @Transactional
+    public List<ProductPurchaseResponse> purchaseProducts(List<ProductPurchaseRequest> request) {
+        // Obtenemos todos los id de los productos que se van a comprar
+        List<Long> productIdsRequest = request.stream().map(ProductPurchaseRequest::productId).toList();
+
+        // Verificamos si tenemos disponible todos los productos que se van a comprar
+        List<Product> productsDB = this.productRepository.findAllByIdInOrderById(productIdsRequest);
+        if (productIdsRequest.size() != productsDB.size()) {
+            throw new ProductPurchaseException("Uno o varios productos no existen en la base de datos");
+        }
+
+        List<ProductPurchaseRequest> requestProductList = request.stream()
+                .sorted(Comparator.comparing(ProductPurchaseRequest::productId))
+                .toList();
+
+        List<ProductPurchaseResponse> purchaseProducts = new ArrayList<>();
+
+        for (int i = 0; i < productsDB.size(); i++) {
+            Product productDB = productsDB.get(i);
+            ProductPurchaseRequest productRequest = requestProductList.get(i);
+
+            if (productDB.getAvailableQuantity() < productRequest.quantity()) {
+                throw new ProductPurchaseException("Stock insuficiente para el producto con id " + productDB.getId());
+            }
+
+            double newAvailableQuantity = productDB.getAvailableQuantity() - productRequest.quantity();
+            productDB.setAvailableQuantity(newAvailableQuantity);
+            this.productRepository.save(productDB);
+
+            purchaseProducts.add(this.productMapper.toProductPurchaseResponse(productDB, productRequest.quantity()));
+        }
+
+        return purchaseProducts;
+    }
+}
+````
+
+Para finalizar la implementación, creamos el controlador de productos donde expondremos los siguientes endpoints:
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/products")
+public class ProductController {
+
+    private final ProductService productService;
+
+    @GetMapping
+    public ResponseEntity<List<ProductResponse>> findAllProducts() {
+        return ResponseEntity.ok(this.productService.findAllProducts());
+    }
+
+    @GetMapping(path = "/{productId}")
+    public ResponseEntity<ProductResponse> findProduct(@PathVariable Long productId) {
+        return ResponseEntity.ok(this.productService.findProduct(productId));
+    }
+
+    @PostMapping
+    public ResponseEntity<Long> createProduct(@Valid @RequestBody ProductRequest request) {
+        Long productId = this.productService.createProduct(request);
+        URI productUri = URI.create("/api/v1/products/" + productId);
+        return ResponseEntity.created(productUri).body(productId);
+    }
+
+    @PostMapping(path = "/purchase")
+    public ResponseEntity<List<ProductPurchaseResponse>> purchaseProducts(@RequestBody List<ProductPurchaseRequest> request) {
+        return ResponseEntity.ok(this.productService.purchaseProducts(request));
+    }
+
+}
+````
+
+## Agrega nueva migración: inserta datos
+
+Vamos a crear una nueva migración tal como lo hicimos con la primera que nos permitió crear las tablas en la base de
+datos. En esta oportunidad crearemos la migración para poblar las tablas creadas inicialmente. Para eso nos apoyaremos
+de `Chat-GPT` para que nos cree registros aleatorios.
+
+Recordar que el nombre del archivo debe seguir el formato `V{número}__{nombre_del_archivo}.sql`. Para esta nueva
+migración crearemos el archivo `V2.0__insert_data.sql` que estará ubicado en
+`business-domain/product-service/src/main/resources/db/migration/V2.0__insert_data.sql`.
+
+````sql
+INSERT INTO categories (name, description) VALUES
+('Computadoras', 'Todo tipo de computadoras'),
+('Laptops', 'Laptops de varias marcas'),
+('Monitores', 'Monitores de diferentes tamaños y resoluciones'),
+('Teclados', 'Teclados mecánicos y de membrana'),
+('Mouse', 'Mouse para juegos y uso cotidiano'),
+('Impresoras', 'Impresoras de tinta y láser'),
+('Accesorios', 'Accesorios para computadoras'),
+('Componentes', 'Componentes internos de computadoras'),
+('Software', 'Software para productividad y juegos'),
+('Redes', 'Equipos de redes y conectividad');
+
+INSERT INTO products (name, description, available_quantity, price, category_id) VALUES
+('Laptop Dell XPS 13', 'Laptop de alta gama de Dell', 50, 999.99, 2),
+('Laptop HP Pavilion', 'Laptop para uso cotidiano', 100, 599.99, 2),
+('Monitor Samsung 24"', 'Monitor Full HD de 24 pulgadas', 75, 149.99, 3),
+('Monitor LG Ultrawide', 'Monitor Ultrawide para multitarea', 50, 299.99, 3),
+('Teclado Mecánico Corsair', 'Teclado mecánico con retroiluminación RGB', 200, 129.99, 4),
+('Teclado Logitech K120', 'Teclado básico para oficina', 300, 19.99, 4),
+('Mouse Logitech G502', 'Mouse para juegos con alta precisión', 150, 49.99, 5),
+('Mouse Microsoft Basic', 'Mouse básico para uso cotidiano', 250, 14.99, 5),
+('Impresora HP LaserJet', 'Impresora láser monocromática', 50, 199.99, 6),
+('Impresora Canon Pixma', 'Impresora de inyección de tinta a color', 80, 89.99, 6),
+('Cable HDMI', 'Cable HDMI de alta velocidad', 500, 9.99, 7),
+('Cargador de Laptop Universal', 'Cargador universal para laptops', 200, 29.99, 7),
+('Procesador Intel i7', 'Procesador de alto rendimiento', 30, 299.99, 8),
+('Tarjeta Gráfica NVIDIA GTX 1660', 'Tarjeta gráfica para juegos', 25, 229.99, 8),
+('Software Microsoft Office', 'Suite de oficina de Microsoft', 100, 149.99, 9),
+('Antivirus Norton', 'Software antivirus para protección', 200, 39.99, 9),
+('Router TP-Link', 'Router inalámbrico de alta velocidad', 100, 49.99, 10),
+('Switch Netgear', 'Switch de red de 8 puertos', 75, 29.99, 10),
+('Laptop Lenovo ThinkPad', 'Laptop de negocios de Lenovo', 60, 899.99, 2),
+('Monitor Acer 27"', 'Monitor de 27 pulgadas con resolución 4K', 40, 349.99, 3),
+('Teclado Razer BlackWidow', 'Teclado mecánico para juegos', 100, 139.99, 4),
+('Mouse Razer DeathAdder', 'Mouse para juegos con sensor óptico', 120, 59.99, 5),
+('Impresora Epson EcoTank', 'Impresora de inyección de tinta con tanques recargables', 30, 249.99, 6),
+('Auriculares Sony', 'Auriculares inalámbricos con cancelación de ruido', 150, 199.99, 7),
+('Disco Duro Externo WD', 'Disco duro externo de 1TB', 200, 59.99, 7),
+('Memoria RAM Corsair 16GB', 'Memoria RAM DDR4', 80, 79.99, 8),
+('Placa Madre ASUS', 'Placa madre para procesadores Intel', 50, 129.99, 8),
+('Sistema Operativo Windows 10', 'Sistema operativo de Microsoft', 150, 119.99, 9),
+('Suite Adobe Creative Cloud', 'Suite de aplicaciones creativas de Adobe', 60, 239.99, 9),
+('Extensor de Red TP-Link', 'Extensor de red inalámbrica', 100, 24.99, 10);
+````
