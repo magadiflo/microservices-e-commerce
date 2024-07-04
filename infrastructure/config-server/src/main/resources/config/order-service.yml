@@ -1,0 +1,35 @@
+server:
+  port: 8083
+  error:
+    include-message: always
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5435/db_order_service
+    username: magadiflo
+    password: magadiflo
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+custom:
+  config:
+    customer-url: http://localhost:8081/api/v1/customers
+    product-url: http://localhost:8082/api/v1/products
+    payment-url: http://localhost:8084/api/v1/payments
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
