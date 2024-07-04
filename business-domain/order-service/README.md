@@ -109,3 +109,83 @@ logging:
 Notar que hemos agregado configuraciones personalizadas (`custom`). Nuestro microservicio de órdenes se va a comunicar
 con varios microservicios, por eso definimos la url de cada uno de ellos.
 
+## Crea entidades: Order y OrderLine
+
+Antes de crear las entidades definamos una clase de enumeración para los métodos de pagos que serán usados en la entidad
+Order:
+
+````java
+public enum PaymentMethod {
+    PAYPAL, CREDIT_CARD, VISA_CARD, MASTER_CARD, BITCOIN
+}
+````
+
+Ahora, vamos a crear las entidades con las que trabajaremos en este microservicio `Order` y `OrderLine`:
+
+````java
+
+@ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+@Entity
+@Table(name = "orders")
+@EntityListeners(AuditingEntityListener.class)
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String reference;
+    private BigDecimal totalAmount;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
+
+    @CreatedDate
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createDate;
+
+    @LastModifiedDate
+    @Column(insertable = false)
+    private LocalDateTime lastModifiedDate;
+
+    private String customerId;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderLine> orderLines;
+}
+````
+
+**DONDE**
+
+- Relacionamos esta entidad con la entidad `OrderLine` usando una relación bidireccional `(@OneToMany - @ManyToOne)`.
+- Vamos a trabajar con auditoría, por lo tanto, usaremos las anotaciones `@CreatedDate` y `@LastModifiedDate`. Para que
+  estas anotaciones funcionen debemos agregar la anotación `@EntityListeners(AuditingEntityListener.class)` a nivel de
+  clase en la entidad `Order`. Así mismo, debemos agregar la anotación `@EnableJpaAuditing` en la clase principal de
+  este microservicio.
+
+````java
+
+@ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+@Entity
+@Table(name = "order_lines")
+public class OrderLine {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private double quantity;
+
+    private Long productId;
+
+    @ManyToOne
+    @JoinColumn(name = "order_id")
+    private Order order;
+}
+````
