@@ -26,9 +26,15 @@ eureka:
 
 custom:
   config:
-    customer-url: http://localhost:8081/api/v1/customers
-    product-url: http://localhost:8082/api/v1/products
-    payment-url: http://localhost:8084/api/v1/payments
+    customer:
+      url: http://localhost:8081
+      path: /api/v1/customers
+    product:
+      url: http://localhost:8082
+      path: /api/v1/products
+    payment:
+      url: http://localhost:8084
+      path: /api/v1/payments
 
 logging:
   level:

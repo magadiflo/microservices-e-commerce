@@ -97,9 +97,15 @@ eureka:
 
 custom:
   config:
-    customer-url: http://localhost:8081/api/v1/customers
-    product-url: http://localhost:8082/api/v1/products
-    payment-url: http://localhost:8084/api/v1/payments
+    customer:
+      url: http://localhost:8081
+      path: /api/v1/customers
+    product:
+      url: http://localhost:8082
+      path: /api/v1/products
+    payment:
+      url: http://localhost:8084
+      path: /api/v1/payments
 
 logging:
   level:
@@ -187,5 +193,303 @@ public class OrderLine {
     @ManyToOne
     @JoinColumn(name = "order_id")
     private Order order;
+}
+````
+
+## Define clases para el uso de clientes http: FeignClient y RestClient
+
+En este apartado nos vamos a comunicar con los otros dos microservicios creados: `product-service` y `customer-service`.
+Para eso vamos a implementar dos maneras de establecer comunicación con los microservicios, la primera es usando el
+`FeignClient` y la segunda usando `RestClient` (en el video usa RestTemplate).
+
+````java
+
+@FeignClient(name = "customer-service", url = "${custom.config.customer.url}", path = "${custom.config.customer.path}")
+public interface CustomerClient {
+    @GetMapping(path = "/{customerId}")
+    Optional<CustomerResponse> findCustomer(@PathVariable String customerId);
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Component
+public class ProductClient {
+
+    @Value("${custom.config.product.url}")
+    private String productUrl;
+
+    @Value("${custom.config.product.path}")
+    private String productPath;
+
+    private RestClient restClient;
+    private final RestClient.Builder restClientBuilder;
+
+    @PostConstruct
+    public void init() {
+        this.restClient = this.restClientBuilder.baseUrl(this.productUrl + this.productPath).build();
+    }
+
+    public List<PurchaseResponse> purchaseProducts(List<PurchaseRequest> requestBody) {
+        return this.restClient.post()
+                .uri("/purchase")
+                .accept(MediaType.APPLICATION_JSON)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (request, response) -> {
+                    throw new BusinessException("Error al procesar compra de productos:: " + response.getStatusText());
+                })
+                .body(new ParameterizedTypeReference<>() {
+                });
+    }
+}
+````
+
+Con respecto al uso de `@FeignClient`, necesitamos habilitar el uso de feing en nuestro proyecto, para eso agregamos
+la siguiente anotación en la clase principal del proyecto.
+
+````java
+
+@EnableFeignClients //<-- Habilita el uso de FeignClient
+@EnableJpaAuditing
+@SpringBootApplication
+public class OrderServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderServiceApplication.class, args);
+    }
+}
+````
+
+Con respecto al `RestClient`, crearemos un bean que exponga el `RestClient.Builder`. Aunque leí en la documentación que
+Spring Boot crea y preconfigura un prototipo de bean `RestClient.Builder` para nosotros
+([leer RestClient](https://docs.spring.io/spring-boot/reference/io/rest-client.html#io.rest-client.restclient)),
+en mi caso seré explícito y lo crearé, dado que más adelante usaré la anotación `@LoadBalanced` en este bean para el
+tema del balanceo de carga.
+
+````java
+
+@Configuration
+public class AppConfig {
+    @Bean
+    RestClient.Builder restClientBuilder() {
+        return RestClient.builder();
+    }
+}
+````
+
+## Crea dtos
+
+La implementación que realizaremos requiere un conjunto de dtos tanto para enviar información como para recibirlos.
+A continuación se muestran los dtos que usaremos en este microservicio.
+
+````java
+public record CustomerResponse(String id,
+                               String firstName,
+                               String lastName,
+                               String email,
+                               Address address) {
+}
+````
+
+````java
+public record Address(String street,
+                      String houseNumber,
+                      String zipCode) {
+}
+````
+
+````java
+public record OrderRequest(String reference,
+
+                           @NotNull(message = "El monto no debe ser nulo")
+                           @Positive(message = "El monto debe ser positivo")
+                           BigDecimal amount,
+
+                           @NotNull(message = "El método de pago no debe ser nulo")
+                           PaymentMethod paymentMethod,
+
+                           @NotBlank(message = "El cliente debe estar presente")
+                           String customerId,
+
+                           @NotEmpty(message = "Deberías comprar al menos un producto")
+                           List<@Valid PurchaseRequest> products) {
+}
+````
+
+````java
+public record PurchaseRequest(@NotNull(message = "El producto es obligatorio")
+                              Long productId,
+
+                              @Positive(message = "La cantidad debe ser positiva")
+                              @NotNull(message = "La cantidad es obligatorio")
+                              Double quantity) {
+}
+````
+
+````java
+public record PurchaseResponse(Long productId,
+                               String name,
+                               String description,
+                               BigDecimal price,
+                               double quantity) {
+}
+````
+
+````java
+public record OrderLineRequest(Long orderId, Long productId, Double quantity) {
+}
+````
+
+Probablemente, nuestra aplicación lance errores que son propios de la lógica de negocio, en ese sentido crearemos una
+excepción personalizada para manejarlo.
+
+````java
+public class BusinessException extends RuntimeException {
+    public BusinessException(String message) {
+        super(message);
+    }
+}
+````
+
+## Crea repositorios para Order y OrderLine
+
+````java
+public interface OrderRepository extends JpaRepository<Order, Long> {
+}
+````
+
+````java
+public interface OrderLineRepository extends JpaRepository<OrderLine, Long> {
+}
+````
+
+## Crea Mappers
+
+Como parte de buenas prácticas crearemos clases que nos ayudarán a mapear entidades a dtos y viceversa:
+
+````java
+
+@Component
+public class OrderMapper {
+    public Order toOrder(OrderRequest request) {
+        return Order.builder()
+                .reference(request.reference())
+                .totalAmount(request.amount())
+                .paymentMethod(request.paymentMethod())
+                .customerId(request.customerId())
+                .build();
+    }
+}
+````
+
+````java
+
+@Component
+public class OrderLineMapper {
+
+    public OrderLine toOrderLine(OrderLineRequest orderLineRequest) {
+        return OrderLine.builder()
+                .productId(orderLineRequest.productId())
+                .quantity(orderLineRequest.quantity())
+                .order(Order.builder().id(orderLineRequest.orderId()).build())
+                .build();
+    }
+
+}
+````
+
+## Crea Servicios para Order y OrderLine
+
+````java
+public interface OrderService {
+    Long createdOrder(OrderRequest request);
+}
+````
+
+````java
+public interface OrderLineService {
+    Long saveOrderLine(OrderLineRequest orderLineRequest);
+}
+````
+
+A continuación se muestra parte de la implementación de la clase de servicio `OrderServiceImpl`. Notar que aún no está
+finalizada la implementación, nos faltan algunos servicios que iremos construyendo más adelante.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class OrderServiceImpl implements OrderService {
+
+    private final CustomerClient customerClient;
+    private final ProductClient productClient;
+    private final OrderRepository orderRepository;
+    private final OrderLineService orderLineService;
+    private final OrderMapper orderMapper;
+
+    @Override
+    @Transactional
+    public Long createdOrder(OrderRequest request) {
+        CustomerResponse customerResponse = this.customerClient.findCustomer(request.customerId())
+                .orElseThrow(() -> new BusinessException(String.format("No se puede crear la orden. El cliente con id %s no existe", request.customerId())));
+
+        List<PurchaseResponse> purchaseResponses = this.productClient.purchaseProducts(request.products());
+
+        Order orderDB = this.orderRepository.save(this.orderMapper.toOrder(request));
+
+        request.products().forEach(pr -> {
+            OrderLineRequest orderLineRequest = new OrderLineRequest(orderDB.getId(), pr.productId(), pr.quantity());
+            this.orderLineService.saveOrderLine(orderLineRequest);
+        });
+
+        // TODO: start payment process
+
+        // send the order confirmation --> notification-ms (kafka)
+        return 0L;
+    }
+
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class OrderLineServiceImpl implements OrderLineService {
+
+    private final OrderLineRepository orderLineRepository;
+    private final OrderLineMapper orderLineMapper;
+
+    @Override
+    public Long saveOrderLine(OrderLineRequest orderLineRequest) {
+        OrderLine orderLine = this.orderLineMapper.toOrderLine(orderLineRequest);
+        return this.orderLineRepository.save(orderLine).getId();
+    }
+}
+````
+
+## Crea controlador de Order
+
+Para finalizar la implementación de este apartado, crearemos el controlador que usa el servicio creado anteriormente y
+llama a su método `createdOrder`.
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/orders")
+public class OrderController {
+
+    private final OrderService orderService;
+
+    @PostMapping
+    public ResponseEntity<Long> createOrder(@Valid @RequestBody OrderRequest request) {
+        Long orderId = this.orderService.createdOrder(request);
+        URI uriOrder = URI.create("/api/v1/orders/" + orderId);
+        return ResponseEntity.created(uriOrder).body(orderId);
+    }
+
 }
 ````
