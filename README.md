@@ -119,3 +119,69 @@ ecf0143f041f   postgres:15.2-alpine   "docker-entrypoint.s…"   19 minutes ago 
 18c8f8804e4d   maildev/maildev        "bin/maildev"            19 minutes ago   Up 19 minutes (unhealthy)   0.0.0.0:1025->1025/tcp, 0.0.0.0:1080->1080/tcp   c-ms-mail-dev
 9b186bdc8b97   mongo:6-jammy          "docker-entrypoint.s…"   19 minutes ago   Up 19 minutes               0.0.0.0:27017->27017/tcp                         c-ms-mongodb
 ````
+
+## Configura Kafka y Zookeeper con Docker
+
+Si observamos el diagrama del "Diseño global del sistema" que mostramos al inicio veremos que estamos usando Kafka para
+poder recibir mensajes y notificarlos. En ese sentido, vamos a agregar a nuestro archivo `compose.yml` el contenedor
+de `Kafka` y al mismo tiempo agregaremos el contenedor de `Zookeeper`, dado que `Kafka` lo requiere para funcionar.
+
+````yml
+services:
+  # other container services
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: c-ms-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: [ "CMD-SHELL", "nc -z localhost 2181 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ms-e-commerce-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: c-ms-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    ports:
+      - 9092:9092
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - ms-e-commerce-net
+
+# other properties
+
+networks:
+  ms-e-commerce-net:
+    name: ms-e-commerce-net
+````
+
+Notar que en el servicio de `zookeeper` estamos haciendo uso del checkeo de salud (`healthcheck`)  a través del comando
+`test: [ "CMD-SHELL", "nc -z localhost 2181 || exit 1" ]`, donde:
+
+- `nc`, es la abreviatura de Netcat, una utilidad de red que se usa para leer y escribir datos a través de conexiones de
+  red utilizando los protocolos TCP o UDP.
+- `-z`, esta opción le dice a Netcat que solo haga un escaneo de puertos, sin enviar ni recibir datos. Básicamente,
+  verifica si el puerto especificado está abierto.
+- `localhost`, es el nombre de host que representa la máquina local (es decir, la misma máquina donde se está ejecutando
+  el comando). Se traduce a la dirección IP 127.0.0.1. En el caso del contenedor de zookeeper sería su interior.
+- `2181`, es el número de puerto que se está verificando. En este caso, es el puerto en el que Zookeeper escucha por
+  defecto.
+- `test: ["CMD-SHELL", "nc -z localhost 2181 || exit 1"]`, utiliza el comando Netcat (nc) para verificar si el puerto
+  2181 está abierto dentro del contenedor. Si el comando `nc -z localhost 2181` falla, se ejecuta `exit 1`, indicando un
+  fallo en el healthcheck.
