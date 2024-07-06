@@ -12,6 +12,8 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -40,7 +42,9 @@ public class ProductClient {
                 .body(requestBody)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (request, response) -> {
-                    throw new BusinessException("Error al procesar compra de productos:: " + response.getStatusText());
+                    InputStream responseBody = response.getBody();
+                    String responseBodyAsString = new String(responseBody.readAllBytes(), StandardCharsets.UTF_8);
+                    throw new BusinessException("Error al procesar compra de productos :: " + responseBodyAsString);
                 })
                 .body(new ParameterizedTypeReference<>() {
                 });

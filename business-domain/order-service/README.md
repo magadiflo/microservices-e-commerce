@@ -1,5 +1,9 @@
 # Order Microservice
 
+**Referencias**
+
+- [book-kafka-in-action-2022](https://github.com/magadiflo/book-kafka-in-action-2022/blob/main/README.md)
+
 ---
 
 ## Dependencias
@@ -239,7 +243,9 @@ public class ProductClient {
                 .body(requestBody)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (request, response) -> {
-                    throw new BusinessException("Error al procesar compra de productos:: " + response.getStatusText());
+                    InputStream responseBody = response.getBody();
+                    String responseBodyAsString = new String(responseBody.readAllBytes(), StandardCharsets.UTF_8);
+                    throw new BusinessException("Error al procesar compra de productos :: " + responseBodyAsString);
                 })
                 .body(new ParameterizedTypeReference<>() {
                 });
@@ -491,5 +497,338 @@ public class OrderController {
         return ResponseEntity.created(uriOrder).body(orderId);
     }
 
+}
+````
+
+## Finaliza implementación de Order
+
+En la sección anterior habíamos implementado únicamente el método `createOrder()` para el servicio de orden, incluso
+no habíamos finalizado dado que necesitábamos agregar `Kafka`. En esta sección vamos a continuar implementando este
+servicio, empezando desde el controlador de Order y a medida que avancemos iremos agregando las dependencias adicionales
+como `Kafka`.
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/orders")
+public class OrderController {
+
+    private final OrderService orderService;
+
+    @GetMapping
+    public ResponseEntity<List<OrderResponse>> findAllOrders() {
+        return ResponseEntity.ok(this.orderService.findAllOrders());
+    }
+
+    @GetMapping("/{orderId}")
+    public ResponseEntity<OrderResponse> findOrder(@PathVariable Long orderId) {
+        return ResponseEntity.ok(this.orderService.findOrder(orderId));
+    }
+
+    @PostMapping
+    public ResponseEntity<Long> createOrder(@Valid @RequestBody OrderRequest request) {
+        Long orderId = this.orderService.createdOrder(request);
+        URI uriOrder = URI.create("/api/v1/orders/" + orderId);
+        return ResponseEntity.created(uriOrder).body(orderId);
+    }
+
+}
+````
+
+El controlador anterior usa una interfaz `OrderService` donde definimos los siguientes métodos:
+
+````java
+public interface OrderService {
+    List<OrderResponse> findAllOrders();
+
+    OrderResponse findOrder(Long orderId);
+
+    Long createdOrder(OrderRequest request);
+}
+````
+
+Ahora necesitamos implementar los métodos agregados al servicio anterior. Es importante notar que en este apartado
+tenemos casi finalizada el método `createdOrder()`, lo único que nos falta implementar es el envío de información
+hacia el microservicio de pagos que aún no lo tenemos implementado.
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class OrderServiceImpl implements OrderService {
+
+    private final CustomerClient customerClient;
+    private final ProductClient productClient;
+    private final OrderRepository orderRepository;
+    private final OrderLineService orderLineService;
+    private final OrderMapper orderMapper;
+    private final OrderProducer orderProducer;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<OrderResponse> findAllOrders() {
+        return this.orderRepository.findAll().stream()
+                .map(this.orderMapper::toOrderResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public OrderResponse findOrder(Long orderId) {
+        return this.orderRepository.findById(orderId)
+                .map(this.orderMapper::toOrderResponse)
+                .orElseThrow(() -> new EntityNotFoundException("No existe la orden con el id " + orderId + " proporcionado"));
+    }
+
+    @Override
+    @Transactional
+    public Long createdOrder(OrderRequest request) {
+        CustomerResponse customerResponse = this.customerClient.findCustomer(request.customerId())
+                .orElseThrow(() -> new BusinessException(String.format("No se puede crear la orden. El cliente con id %s no existe", request.customerId())));
+
+        List<PurchaseResponse> purchaseProducts = this.productClient.purchaseProducts(request.products());
+
+        Order orderDB = this.orderRepository.save(this.orderMapper.toOrder(request));
+
+        request.products().forEach(pr -> {
+            OrderLineRequest orderLineRequest = new OrderLineRequest(orderDB.getId(), pr.productId(), pr.quantity());
+            this.orderLineService.saveOrderLine(orderLineRequest);
+        });
+
+        // TODO: start payment process
+
+        OrderConfirmation orderConfirmation = new OrderConfirmation(request.reference(), request.amount(),
+                request.paymentMethod(), customerResponse, purchaseProducts);
+        this.orderProducer.sendOrderConfirmation(orderConfirmation);
+
+        return orderDB.getId();
+    }
+
+}
+````
+
+## Agrega nuevos dtos y conversión en el OrderMapper
+
+Antes de continuar con la implementación, necesitamos crear algunos dtos que estaremos usando y que hemos usado en el
+código anterior.
+
+````java
+public record OrderConfirmation(String orderReference,
+                                BigDecimal totalAmount,
+                                PaymentMethod paymentMethod,
+                                CustomerResponse customer,
+                                List<PurchaseResponse> products) {
+}
+````
+
+````java
+
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+public class OrderResponse {
+    private Long id;
+    private String reference;
+    private BigDecimal totalAmount;
+    private PaymentMethod paymentMethod;
+    private String customerId;
+}
+````
+
+Teniendo los dtos anteriores, vamos a crear un método adicional en el `OrderMapper` para realizar la conversión entre
+una entidad `Order` y un dto `OrderResponse`:
+
+````java
+
+@Component
+public class OrderMapper {
+    public Order toOrder(OrderRequest request) {
+        return Order.builder()
+                .reference(request.reference())
+                .totalAmount(request.amount())
+                .paymentMethod(request.paymentMethod())
+                .customerId(request.customerId())
+                .build();
+    }
+
+    public OrderResponse toOrderResponse(Order order) {
+        return OrderResponse.builder()
+                .id(order.getId())
+                .reference(order.getReference())
+                .totalAmount(order.getTotalAmount())
+                .paymentMethod(order.getPaymentMethod())
+                .customerId(order.getCustomerId())
+                .build();
+    }
+}
+````
+
+## Agrega dependencia de Kafka
+
+En el `pom.xml` del `order-service` agregamos la dependencia de `Kafka`:
+
+````xml
+
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.kafka</groupId>
+        <artifactId>spring-kafka</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.kafka</groupId>
+        <artifactId>spring-kafka-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
+````
+
+Ahora, a través de una clase de configuración expondremos un `@Bean` que nos permitirá crear un `topic` a donde
+enviaremos la confirmación luego de procesar la orden de compra.
+
+````java
+
+@Configuration
+public class KafkaOrderTopicConfig {
+
+    public final static String ORDER_TOPIC = "order-topic";
+
+    @Bean
+    public NewTopic topic() {
+        return TopicBuilder.name(ORDER_TOPIC).build();
+    }
+}
+````
+
+**NOTA 1**
+
+> El bean `NewTopic` hace que se cree el `topic` en el broker; no es necesario si el topic ya existe.
+
+**NOTA 2**
+> Si ejecutamos por primera vez el microservicio sin crear el topic `(NewTopic)`, incluso si este topic no existe en
+> `kafka`, recibiremos en la consola del IDE un `WARN` similar a este:
+>
+> `WARN 12040 --- [demo] [order-service-producer-1] org.apache.kafka.clients.NetworkClient:`<br>
+> `[Producer clientId=order-service-producer-1] Error while fetching metadata with correlation id 6 : {order-topic=LEADER_NOT_AVAILABLE}`
+>
+> Precisamente el `WARN` ocurre porque no existe el topic al que se está llamando, por lo tanto,
+> `Spring Boot Apache Kafka` lanza la advertencia y procede a crear el topic por nosotros, es por eso que si ejecutamos
+> por segunda vez la aplicación, ahora ya no veremos el warn, dado que ya se ha creado.
+>
+> En mi caso, prefiero definir el `@Bean NewTopic` para crear el topic de antemano y evitar que lance ese warn, aunque
+> eso lo hace solo la primera vez.
+
+Vamos a crear una clase que se encargue de enviar los mensajes a Kafka, de esta manera mantenemos mejor organizada la
+aplicación:
+
+````java
+
+@Slf4j
+@RequiredArgsConstructor
+@Service
+public class OrderProducer {
+
+    private final KafkaTemplate<String, OrderConfirmation> kafkaTemplate;
+
+    public void sendOrderConfirmation(OrderConfirmation orderConfirmation) {
+        log.info("Enviando confirmación de la orden");
+        Message<OrderConfirmation> message = MessageBuilder
+                .withPayload(orderConfirmation) //Esto lo definimos en la propiedad spring.json.type.mapping del order-service.yml
+                .setHeader(KafkaHeaders.TOPIC, KafkaOrderTopicConfig.ORDER_TOPIC)
+                .build();
+
+        this.kafkaTemplate.send(message);
+    }
+}
+````
+
+En la clase anterior estamos pasando un objeto por parámetro llamado `orderConfirmation`. Este nombre de objeto será
+el que usaremos en la propiedad `spring.json.type.mapping` del `order-service.yml`. A continuación se muestra el
+archivo de configuración `order-service.yml` donde se está usando el objeto `orderConfirmation`.
+
+````yml
+spring:
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.type.mapping: orderConfirmation:dev.magadiflo.ecommerce.app.models.dtos.OrderConfirmation
+````
+
+Los mensajes que se envían a `Kafka` están compuestos por:
+
+- Una marca de tiempo,
+- Un valor y
+- Una clave opcional.
+
+Para la key y el value necesitamos decirle a `Spring Boot Apache Kafka` cómo serializar los mensajes. Para la:
+
+- `key-serializer`, utilizamos el que nos proporciona la dependencia de Apache
+  Kafka `org.apache.kafka.common.serialization.StringSerializer`.
+
+
+- `value-serializer`, utilizamos el que nos proporciona
+  springframework `org.springframework.kafka.support.serializer.JsonSerializer`, dado que enviaremos al servidor de
+  kafka objetos y no cadenas de texto. Si solo enviáramos cadenas de texto, podríamos usar el mismo serializador que usa
+  el key, pero en nuestro caso enviaremos objetos, por eso necesitamos usar un serializador acorde `JsonSerializer`.
+
+
+- La configuración `spring.kafka.producer.properties.spring.json.type.mapping` se utiliza para mapear tipos de mensajes
+  JSON a clases específicas de tu aplicación. Esto es útil cuando estás trabajando con mensajes JSON en Kafka y deseas
+  deserializarlos automáticamente a objetos de tu modelo de datos en lugar de manejar JSON manualmente. De esta manera,
+  la biblioteca rellenará el encabezado de tipo con el nombre de clase correspondiente.
+
+- La configuración `spring.json.type.mapping`, está definida por un `token:className`, en nuestro caso lo tenemos
+  definido así `orderConfirmation:dev.magadiflo.ecommerce.app.models.dtos.OrderConfirmation`, donde `orderConfirmation`
+  es el token y lo que sigue después de los dos puntos el `className`.
+
+- Importante el token que definimos en la configuración anterior (`orderConfirmation`), lo tenemos definido como
+  parámetro en el método `sendOrderConfirmation()` de la clase `OrderProducer`. En pocas palabras, es lo que estamos
+  enviando como `payload`. Es muy importante que el objeto (token) sea compatible con el className colocado.
+
+## Manejo de errores y excepciones
+
+Vamos a crear una clase global para manejar las excepciones:
+
+````java
+public record ErrorResponse(Map<String, String> errors) {
+}
+````
+
+````java
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<String> handle(EntityNotFoundException exception) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(exception.getMessage());
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<String> handle(BusinessException exception) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(exception.getMessage());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handle(MethodArgumentNotValidException exception) {
+        var errors = new HashMap<String, String>();
+        exception.getBindingResult().getAllErrors().forEach(error -> {
+            String field = ((FieldError) error).getField();
+            String defaultMessage = error.getDefaultMessage();
+            errors.computeIfAbsent(field, fieldKey -> defaultMessage);
+        });
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse(errors));
+    }
 }
 ````
