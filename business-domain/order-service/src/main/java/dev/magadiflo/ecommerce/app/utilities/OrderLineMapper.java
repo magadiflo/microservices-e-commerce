@@ -1,6 +1,7 @@
 package dev.magadiflo.ecommerce.app.utilities;
 
 import dev.magadiflo.ecommerce.app.models.dtos.OrderLineRequest;
+import dev.magadiflo.ecommerce.app.models.dtos.OrderLineResponse;
 import dev.magadiflo.ecommerce.app.models.entities.Order;
 import dev.magadiflo.ecommerce.app.models.entities.OrderLine;
 import org.springframework.stereotype.Component;
@@ -16,4 +17,10 @@ public class OrderLineMapper {
                 .build();
     }
 
+    public OrderLineResponse toOrderLineResponse(OrderLine orderLine) {
+        return OrderLineResponse.builder()
+                .id(orderLine.getId())
+                .quantity(orderLine.getQuantity())
+                .build();
+    }
 }

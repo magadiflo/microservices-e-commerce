@@ -832,3 +832,106 @@ public class GlobalExceptionHandler {
     }
 }
 ````
+
+## Implementa el OrderLine
+
+Empezamos implementando el controlador del `OrderLine`:
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/order-lines")
+public class OrderLineController {
+
+    private final OrderLineService service;
+
+    @GetMapping(path = "/order/{orderId}")
+    public ResponseEntity<List<OrderLineResponse>> findOrderLinesByOrderId(@PathVariable Long orderId) {
+        return ResponseEntity.ok(this.service.findAllOrderLinesByOrderId(orderId));
+    }
+
+}
+````
+
+Continuamos definiendo la interfaz y su posterior implementación:
+
+````java
+public interface OrderLineService {
+    List<OrderLineResponse> findAllOrderLinesByOrderId(Long orderId);
+
+    Long saveOrderLine(OrderLineRequest orderLineRequest);
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class OrderLineServiceImpl implements OrderLineService {
+
+    private final OrderLineRepository orderLineRepository;
+    private final OrderLineMapper orderLineMapper;
+
+    @Override
+    public List<OrderLineResponse> findAllOrderLinesByOrderId(Long orderId) {
+        return this.orderLineRepository.findAllByOrderId(orderId).stream()
+                .map(this.orderLineMapper::toOrderLineResponse)
+                .toList();
+    }
+
+    @Override
+    public Long saveOrderLine(OrderLineRequest orderLineRequest) {
+        OrderLine orderLine = this.orderLineMapper.toOrderLine(orderLineRequest);
+        return this.orderLineRepository.save(orderLine).getId();
+    }
+}
+````
+
+En la clase anterior estamos haciendo una conversión entre la entidad `OrderLine` y un dto. A continuación nos
+sumergiremos dentro de la clase `OrderLineMapper` para ver a detalle la conversión:
+
+````java
+
+@Component
+public class OrderLineMapper {
+
+    public OrderLine toOrderLine(OrderLineRequest orderLineRequest) {
+        return OrderLine.builder()
+                .productId(orderLineRequest.productId())
+                .quantity(orderLineRequest.quantity())
+                .order(Order.builder().id(orderLineRequest.orderId()).build())
+                .build();
+    }
+
+    public OrderLineResponse toOrderLineResponse(OrderLine orderLine) {
+        return OrderLineResponse.builder()
+                .id(orderLine.getId())
+                .quantity(orderLine.getQuantity())
+                .build();
+    }
+}
+````
+
+En la clase anterior se hace uso del dto siguiente:
+
+````java
+
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+public class OrderLineResponse {
+    private Long id;
+    double quantity;
+}
+````
+
+Finalmente, creamos el repositorio para el `OrderLine` y definimos un método de consulta usando query methods:
+
+````java
+public interface OrderLineRepository extends JpaRepository<OrderLine, Long> {
+    List<OrderLine> findAllByOrderId(Long orderId);
+}
+````
