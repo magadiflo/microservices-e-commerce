@@ -56,3 +56,62 @@
     </dependency>
 </dependencies>
 ````
+
+## Crea entidad Payment
+
+Antes de crear la entidad `Payment` debemos crear el enum `PaymentMetod`:
+
+````java
+public enum PaymentMethod {
+    PAYPAL, CREDIT_CARD, VISA_CARD, MASTER_CARD, BITCOIN
+}
+````
+
+Ahora, procedemos a crear la entidad `Payment`:
+
+````java
+
+@ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Getter
+@Setter
+@Entity
+@Table(name = "payments")
+@EntityListeners(AuditingEntityListener.class)
+public class Payment {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private BigDecimal amount;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
+
+    private Long orderId;
+
+    @CreatedDate
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime createDate;
+
+    @LastModifiedDate
+    @Column(insertable = false)
+    private LocalDateTime lastModifiedDate;
+}
+````
+
+Nuestra entidad `Payment` llevará anotaciones de auditoría `@CreatedDate` y `@LastModifiedDate`. Para que estas
+anotaciones funcionen le agregamos la anotación `@EntityListeners(AuditingEntityListener.class)` a nivel de clase de la
+entidad. Además, debemos agregarle una última anotación en la clase principal del microservicio `@EnableJpaAuditing`.
+
+````java
+
+@EnableJpaAuditing
+@SpringBootApplication
+public class PaymentServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentServiceApplication.class, args);
+    }
+}
+````
