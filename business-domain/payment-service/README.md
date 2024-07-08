@@ -115,3 +115,49 @@ public class PaymentServiceApplication {
     }
 }
 ````
+
+## Crea dtos
+
+Los dtos usados en este microservicio serán las siguientes:
+
+````java
+public record PaymentNotification(String orderReference,
+                                  BigDecimal amount,
+                                  PaymentMethod paymentMethod,
+                                  String customerFirstName,
+                                  String customerLastName,
+                                  String customerEmail) {
+}
+````
+
+````java
+public record Customer(@NotBlank(message = "El nombre es requerido")
+                       String firstName,
+
+                       @NotBlank(message = "El apellido es requerido")
+                       String lastName,
+
+                       @NotBlank(message = "El correo es requerido")
+                       @Email(message = "El correo no tiene un formato válido")
+                       String email) {
+}
+````
+
+````java
+public record PaymentRequest(@NotNull(message = "El monto es requerido")
+                             @Positive(message = "El monto debe ser positivo")
+                             BigDecimal amount,
+
+                             @NotNull(message = "El método de pago es requerido")
+                             PaymentMethod paymentMethod,
+
+                             @NotNull(message = "La id de la orden es requerido")
+                             Long orderId,
+
+                             String orderReference,
+
+                             @Valid
+                             @NotNull(message = "Debe ingresar datos del cliente")
+                             Customer customer) {
+}
+````
