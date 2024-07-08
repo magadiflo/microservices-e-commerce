@@ -754,6 +754,8 @@ spring:
       bootstrap-servers: localhost:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.type.mapping: orderConfirmationToken:dev.magadiflo.ecommerce.app.models.dtos.OrderConfirmation
 ````
 
 Los mensajes que se envían a `Kafka` están compuestos por:
@@ -771,7 +773,39 @@ Para la key y el value necesitamos decirle a `Spring Boot Apache Kafka` cómo se
 - `value-serializer`, utilizamos el que nos proporciona
   springframework `org.springframework.kafka.support.serializer.JsonSerializer`, dado que enviaremos al servidor de
   kafka objetos y no cadenas de texto. Si solo enviáramos cadenas de texto, podríamos usar el mismo serializador que
-  usa el key, pero en nuestro caso enviaremos objetos, por eso necesitamos usar un serializador acorde `JsonSerializer`.
+  usa el key, pero en nuestro caso enviaremos objetos, por eso necesitamos usar un serializador
+  apropiado `JsonSerializer`.
+
+[Importante: spring.json.type.mapping](https://docs.spring.io/spring-kafka/reference/kafka/serdes.html#serdes-mapping-types)
+
+> Nuestro `producer` enviará objetos del tipo `OrderConfirmation` a kafka, por lo tanto, usaremos el serializador
+> `JsonSerializer` configurado en el `value-serializer`, pero eso no es todo para que se trabaje correctamente, es
+> decir, podríamos omitir el uso de la configuración `spring.json.type.mapping` y enviar los objetos a Kafka sin
+> problemas, pero al momento de que un microservicio consuma ese objeto desde kafka ocurrirán ciertos inconvenientes,
+> ya que el microservicio consumidor no sabrá como mapearlo, no sabe qué objeto es, así que es por eso que necesitamos
+> configurar el mapeo correspondiente usando la configuración `spring.json.type.mapping`.
+>
+> El mapeo consiste en una lista delimitada por comas de pares `token:className`. En nuestro caso hemos definido estos
+> dos elementos de la siguiente manera:
+>
+> `orderConfirmationToken:dev.magadiflo.ecommerce.app.models.dtos.OrderConfirmation`
+>
+> Donde el `orderConfirmationToken` es un token, un objeto, que le dice a kafka que estará mapeado a la
+> clase `OrderConfirmation` de este microservicio `order-service`. En otras palabras, la clase `OrderConfirmation` con
+> todo su nombre completo desde su ubicación será mapeado al token `orderConfirmationToken`.
+>
+> Ahora, cuando construyamos un `consumer` que consuma los objetos del tipo `OrderConfirmation` que enviamos a Kafka,
+> los podrá consumir sin ningún problema, pero ese consumidor también deberá tener la configuración del
+> `spring.json.type.mapping` utilizando el mismo token que se usó para mapear el tipo OrderConfirmation. Por ejemplo,
+> el consumer podría verse así:
+>
+> `spring.kafka.consumer.properties.spring.json.type.mapping=orderConfirmationToken:com.example.consumer.OrderConfirmation`
+>
+> En el ejemplo anterior estamos usando el mismo token que se usó en el producer (`orderConfirmationToken`) y lo
+> estamos mapeando una clase llamada `OrderConfirmation` que está ubicado en el directorio que se muestra, como vemos
+> es distinto al directorio del producer, precisamente es por eso que realizamos el
+> mapeo de tipos. En este caso, le decimos que el token `orderConfirmationToken` lo mapee al `OrderConfirmation` del
+> microservicio consumer.
 
 ## Manejo de errores y excepciones
 

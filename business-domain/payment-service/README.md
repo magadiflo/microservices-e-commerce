@@ -96,6 +96,8 @@ spring:
       bootstrap-servers: localhost:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.type.mapping: paymentNotificationToken:dev.magadiflo.payment.app.models.dtos.PaymentNotification
 
 eureka:
   instance:
@@ -110,8 +112,14 @@ logging:
     org.hibernate.SQL: DEBUG
 ````
 
-En las configuraciones estamos definiendo la base de datos `db_payment_service`, base de datos que debemos crear antes
-de ejecutar la aplicación.
+**DONDE**
+
+- En las configuraciones estamos definiendo la base de datos `db_payment_service`, base de datos que debemos crear antes
+  de ejecutar la aplicación.
+- Estamos usando la configuración `spring.json.type.mapping` para mapear el token `paymentNotificationToken` al tipo
+  `PaymentNotification`. Cualquier consumer que quiera consumir valores de este producer deberá definir la misma
+  configuración incluyendo el mismo token `paymentNotificationToken`. **Para más información ver el `README.md`
+  del `order-service` donde documento en detalle esta configuración.**
 
 ## Crea entidad Payment
 
