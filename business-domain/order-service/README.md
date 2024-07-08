@@ -952,3 +952,106 @@ public interface OrderLineRepository extends JpaRepository<OrderLine, Long> {
     List<OrderLine> findAllByOrderId(Long orderId);
 }
 ````
+
+## Finaliza implementación del método createdOrder()
+
+Recordemos que nos faltaba implementar la llamada al microservicio de pagos que hasta este punto ya hemos acabado de
+implementar. Para eso necesitamos crear un cliente http que nos permita hacer la llamada. En el proyecto del
+ecommerce hemos utilizado dos tipos de clientes `FeignClient` y `RestClient`. En esta oportunidad utilizaremos el nuevo
+cliente rest de Spring Boot `RestClient`, para eso crearemos una clase que encapsulará el uso del cliente rest:
+
+````java
+
+@RequiredArgsConstructor
+@Component
+public class PaymentClient {
+    @Value("${custom.config.payment.url}")
+    private String paymentUrl;
+
+    @Value("${custom.config.payment.path}")
+    private String paymentPath;
+
+    private RestClient restClient;
+    private final RestClient.Builder restClientBuilder;
+
+    @PostConstruct
+    public void init() {
+        this.restClient = this.restClientBuilder.baseUrl(this.paymentUrl + this.paymentPath).build();
+    }
+
+    public Long requestOrderPayment(PaymentRequest paymentRequest) {
+        return this.restClient.post()
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(paymentRequest)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (request, response) -> {
+                    InputStream responseBody = response.getBody();
+                    String responseBodyAsString = new String(responseBody.readAllBytes(), StandardCharsets.UTF_8);
+                    throw new BusinessException("Error al procesar pago de productos :: " + responseBodyAsString);
+                })
+                .body(Long.class);
+    }
+}
+````
+
+Luego, en el `OrderServiceImpl` inyectamos la clase anterior y lo utilizamos para hacer la llamada al servicio de
+pagos.
+
+````java
+
+@Slf4j
+@RequiredArgsConstructor
+@Service
+public class OrderServiceImpl implements OrderService {
+
+    private final CustomerClient customerClient;
+    private final ProductClient productClient;
+    private final OrderRepository orderRepository;
+    private final OrderLineService orderLineService;
+    private final OrderMapper orderMapper;
+    private final OrderProducer orderProducer;
+    private final PaymentClient paymentClient;
+
+    /* other methods */
+
+    @Override
+    @Transactional
+    public Long createdOrder(OrderRequest request) {
+        CustomerResponse customerResponse = this.customerClient.findCustomer(request.customerId())
+                .orElseThrow(() -> new BusinessException(String.format("No se puede crear la orden. El cliente con id %s no existe", request.customerId())));
+
+        List<PurchaseResponse> purchaseProducts = this.productClient.purchaseProducts(request.products());
+
+        Order orderDB = this.orderRepository.save(this.orderMapper.toOrder(request));
+
+        request.products().forEach(pr -> {
+            OrderLineRequest orderLineRequest = new OrderLineRequest(orderDB.getId(), pr.productId(), pr.quantity());
+            this.orderLineService.saveOrderLine(orderLineRequest);
+        });
+
+        PaymentRequest paymentRequest = new PaymentRequest(orderDB.getTotalAmount(), orderDB.getPaymentMethod(),
+                orderDB.getId(), orderDB.getReference(), customerResponse);
+        Long paymentId = this.paymentClient.requestOrderPayment(paymentRequest);
+        log.info("Orden de pago exitoso, se generó el paymentId: {}", paymentId);
+
+        OrderConfirmation orderConfirmation = new OrderConfirmation(request.reference(), request.amount(),
+                request.paymentMethod(), customerResponse, purchaseProducts);
+        this.orderProducer.sendOrderConfirmation(orderConfirmation);
+
+        return orderDB.getId();
+    }
+
+}
+````
+
+Nuestra clase anterior usa una clase llamada `PaymentRequest` que contendrá la información que enviaremos al
+microservicio de pagos.
+
+````java
+public record PaymentRequest(BigDecimal amount,
+                             PaymentMethod paymentMethod,
+                             Long orderId,
+                             String orderReference,
+                             CustomerResponse customer) {
+}
+````

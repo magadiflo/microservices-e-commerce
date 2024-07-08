@@ -1,6 +1,7 @@
 package dev.magadiflo.ecommerce.app.services.impl;
 
 import dev.magadiflo.ecommerce.app.clients.CustomerClient;
+import dev.magadiflo.ecommerce.app.clients.PaymentClient;
 import dev.magadiflo.ecommerce.app.clients.ProductClient;
 import dev.magadiflo.ecommerce.app.exceptions.BusinessException;
 import dev.magadiflo.ecommerce.app.kafka.OrderProducer;
@@ -12,11 +13,13 @@ import dev.magadiflo.ecommerce.app.services.OrderService;
 import dev.magadiflo.ecommerce.app.utilities.OrderMapper;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class OrderServiceImpl implements OrderService {
@@ -27,6 +30,7 @@ public class OrderServiceImpl implements OrderService {
     private final OrderLineService orderLineService;
     private final OrderMapper orderMapper;
     private final OrderProducer orderProducer;
+    private final PaymentClient paymentClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -59,7 +63,10 @@ public class OrderServiceImpl implements OrderService {
             this.orderLineService.saveOrderLine(orderLineRequest);
         });
 
-        // TODO: start payment process
+        PaymentRequest paymentRequest = new PaymentRequest(orderDB.getTotalAmount(), orderDB.getPaymentMethod(),
+                orderDB.getId(), orderDB.getReference(), customerResponse);
+        Long paymentId = this.paymentClient.requestOrderPayment(paymentRequest);
+        log.info("Orden de pago exitoso, se generó el paymentId: {}", paymentId);
 
         OrderConfirmation orderConfirmation = new OrderConfirmation(request.reference(), request.amount(),
                 request.paymentMethod(), customerResponse, purchaseProducts);
