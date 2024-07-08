@@ -172,7 +172,7 @@ public class PaymentServiceApplication {
 }
 ````
 
-## Crea dtos
+## Crea dtos y mapper
 
 Los dtos usados en este microservicio serán las siguientes:
 
@@ -215,5 +215,62 @@ public record PaymentRequest(@NotNull(message = "El monto es requerido")
                              @Valid
                              @NotNull(message = "Debe ingresar datos del cliente")
                              Customer customer) {
+}
+````
+
+Ahora crearemos la clase que mapeará la entidad payment a dto y viceversa:
+
+````java
+public class PaymentMapper {
+    public Payment toPayment(PaymentRequest request) {
+        return Payment.builder()
+                .amount(request.amount())
+                .paymentMethod(request.paymentMethod())
+                .orderId(request.orderId())
+                .build();
+    }
+}
+````
+
+## Crea kafka producer
+
+Antes de crear nuestra clase productora, vamos a crear una clase de configuración para exponer un bean que nos cree el
+topic para payment.
+
+````java
+
+@Configuration
+public class KafkaPaymentTopicConfig {
+
+    public static final String PAYMENT_TOPIC = "payment-topic";
+
+    @Bean
+    public NewTopic topic() {
+        return TopicBuilder.name(PAYMENT_TOPIC).build();
+    }
+}
+````
+
+Ahora, similar a lo que hicimos en el `order-service`, vamos a crear una clase especializada en el envío o en la
+producción de mensajes hacia kafka. En nuestro caso, enviaremos objetos del tipo `PaymentNotification`.
+
+````java
+
+@Slf4j
+@RequiredArgsConstructor
+@Service
+public class NotificationProducer {
+
+    public final KafkaTemplate<String, PaymentNotification> kafkaTemplate;
+
+    public void sendNotification(PaymentNotification paymentNotification) {
+        log.info("Enviando notificación con la siguiente información: {}", paymentNotification);
+        Message<PaymentNotification> message = MessageBuilder
+                .withPayload(paymentNotification)
+                .setHeader(KafkaHeaders.TOPIC, KafkaPaymentTopicConfig.PAYMENT_TOPIC)
+                .build();
+        this.kafkaTemplate.send(message);
+    }
+
 }
 ````
