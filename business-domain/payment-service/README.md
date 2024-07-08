@@ -57,6 +57,62 @@
 </dependencies>
 ````
 
+## Agrega propiedades de configuración
+
+En el `application.yml` del microservicio `payment-service` agregamos las siguientes propiedades.
+
+````yml
+spring:
+  application:
+    name: payment-service
+  config:
+    import: optional:configserver:http://localhost:8888
+````
+
+Ahora, en el `payment-service.yml` del servidor de configuraciones agregamos las configuraciones finales de este
+microservicio, eso incluye las configuraciones de la aplicación como productor hacia kafka.
+
+````yml
+server:
+  port: 8084
+  error:
+    include-message: always
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5435/db_payment_service
+    username: magadiflo
+    password: magadiflo
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+````
+
+En las configuraciones estamos definiendo la base de datos `db_payment_service`, base de datos que debemos crear antes
+de ejecutar la aplicación.
+
 ## Crea entidad Payment
 
 Antes de crear la entidad `Payment` debemos crear el enum `PaymentMetod`:
