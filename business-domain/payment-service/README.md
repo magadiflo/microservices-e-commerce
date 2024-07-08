@@ -221,6 +221,8 @@ public record PaymentRequest(@NotNull(message = "El monto es requerido")
 Ahora crearemos la clase que mapeará la entidad payment a dto y viceversa:
 
 ````java
+
+@Component
 public class PaymentMapper {
     public Payment toPayment(PaymentRequest request) {
         return Payment.builder()
@@ -272,5 +274,65 @@ public class NotificationProducer {
         this.kafkaTemplate.send(message);
     }
 
+}
+````
+
+## Crea repositorio, servicio y controlador
+
+Empezamos creando el repositorio para nuestra entidad Payment.
+
+````java
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
+}
+````
+
+Pasamos a crear el servicio donde definiremos la lógica de la aplicación.
+
+````java
+public interface PaymentService {
+    Long createPayment(PaymentRequest paymentRequest);
+}
+````
+
+````java
+
+@RequiredArgsConstructor
+@Service
+public class PaymentServiceImpl implements PaymentService {
+
+    private final PaymentRepository paymentRepository;
+    private final PaymentMapper paymentMapper;
+    private final NotificationProducer notificationProducer;
+
+    @Override
+    @Transactional
+    public Long createPayment(PaymentRequest paymentRequest) {
+        Payment paymentDB = this.paymentRepository.save(this.paymentMapper.toPayment(paymentRequest));
+        PaymentNotification paymentNotification =
+                new PaymentNotification(paymentRequest.orderReference(),
+                        paymentRequest.amount(), paymentRequest.paymentMethod(),
+                        paymentRequest.customer().firstName(),
+                        paymentRequest.customer().lastName(),
+                        paymentRequest.customer().email());
+        this.notificationProducer.sendNotification(paymentNotification);
+        return paymentDB.getId();
+    }
+}
+````
+
+Finalmente, creamos la clase controladora que llamará al servicio anterior.
+
+````java
+
+@RequiredArgsConstructor
+@RestController
+@RequestMapping(path = "/api/v1/payments")
+public class PaymentController {
+    private final PaymentService paymentService;
+
+    @PostMapping
+    public ResponseEntity<Long> createPayment(@Valid @RequestBody PaymentRequest request) {
+        return new ResponseEntity<>(this.paymentService.createPayment(request), HttpStatus.CREATED);
+    }
 }
 ````
