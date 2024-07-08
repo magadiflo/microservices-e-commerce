@@ -735,7 +735,7 @@ public class OrderProducer {
     public void sendOrderConfirmation(OrderConfirmation orderConfirmation) {
         log.info("Enviando confirmación de la orden");
         Message<OrderConfirmation> message = MessageBuilder
-                .withPayload(orderConfirmation) //Esto lo definimos en la propiedad spring.json.type.mapping del order-service.yml
+                .withPayload(orderConfirmation)
                 .setHeader(KafkaHeaders.TOPIC, KafkaOrderTopicConfig.ORDER_TOPIC)
                 .build();
 
@@ -744,9 +744,8 @@ public class OrderProducer {
 }
 ````
 
-En la clase anterior estamos pasando un objeto por parámetro llamado `orderConfirmation`. Este nombre de objeto será
-el que usaremos en la propiedad `spring.json.type.mapping` del `order-service.yml`. A continuación se muestra el
-archivo de configuración `order-service.yml` donde se está usando el objeto `orderConfirmation`.
+A continuación se muestra el archivo de configuración `order-service.yml` ubicado en el servidor de configuraciones
+donde configuramos el `producer`, es decir, esta aplicación producirá mensajes que serán enviados a Kafka.
 
 ````yml
 spring:
@@ -755,8 +754,6 @@ spring:
       bootstrap-servers: localhost:9092
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      properties:
-        spring.json.type.mapping: orderConfirmation:dev.magadiflo.ecommerce.app.models.dtos.OrderConfirmation
 ````
 
 Los mensajes que se envían a `Kafka` están compuestos por:
@@ -773,22 +770,8 @@ Para la key y el value necesitamos decirle a `Spring Boot Apache Kafka` cómo se
 
 - `value-serializer`, utilizamos el que nos proporciona
   springframework `org.springframework.kafka.support.serializer.JsonSerializer`, dado que enviaremos al servidor de
-  kafka objetos y no cadenas de texto. Si solo enviáramos cadenas de texto, podríamos usar el mismo serializador que usa
-  el key, pero en nuestro caso enviaremos objetos, por eso necesitamos usar un serializador acorde `JsonSerializer`.
-
-
-- La configuración `spring.kafka.producer.properties.spring.json.type.mapping` se utiliza para mapear tipos de mensajes
-  JSON a clases específicas de tu aplicación. Esto es útil cuando estás trabajando con mensajes JSON en Kafka y deseas
-  deserializarlos automáticamente a objetos de tu modelo de datos en lugar de manejar JSON manualmente. De esta manera,
-  la biblioteca rellenará el encabezado de tipo con el nombre de clase correspondiente.
-
-- La configuración `spring.json.type.mapping`, está definida por un `token:className`, en nuestro caso lo tenemos
-  definido así `orderConfirmation:dev.magadiflo.ecommerce.app.models.dtos.OrderConfirmation`, donde `orderConfirmation`
-  es el token y lo que sigue después de los dos puntos el `className`.
-
-- Importante el token que definimos en la configuración anterior (`orderConfirmation`), lo tenemos definido como
-  parámetro en el método `sendOrderConfirmation()` de la clase `OrderProducer`. En pocas palabras, es lo que estamos
-  enviando como `payload`. Es muy importante que el objeto (token) sea compatible con el className colocado.
+  kafka objetos y no cadenas de texto. Si solo enviáramos cadenas de texto, podríamos usar el mismo serializador que
+  usa el key, pero en nuestro caso enviaremos objetos, por eso necesitamos usar un serializador acorde `JsonSerializer`.
 
 ## Manejo de errores y excepciones
 
