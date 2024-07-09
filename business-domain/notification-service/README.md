@@ -268,3 +268,268 @@ no relacional.
 public interface NotificationRepository extends MongoRepository<Notification, String> {
 }
 ````
+
+## Crea el servicio para enviar correo
+
+Nuestra clase de servicio tendrá dos métodos, uno para enviar correo cuando el proceso de pago se ha realizado
+correctamente y el otro método para confirmar la orden.
+
+````java
+
+@Slf4j
+@RequiredArgsConstructor
+@Service
+public class EmailService {
+
+    private final JavaMailSender javaMailSender;
+    private final SpringTemplateEngine templateEngine;
+
+    @Async
+    public void sendPaymentSuccessEmail(String destinationEmail, String customerName, BigDecimal amount, String orderReference) {
+        try {
+            Map<String, Object> variablesMap = new HashMap<>();
+            variablesMap.put("customerName", customerName);
+            variablesMap.put("amount", amount);
+            variablesMap.put("orderReference", orderReference);
+
+            Context context = new Context();
+            context.setVariables(variablesMap);
+
+            final String templateName = EmailTemplates.PAYMENT_CONFIRMATION.getTemplate();
+            String htmlTemplate = this.templateEngine.process(templateName, context);
+
+            MimeMessage mimeMessage = this.javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, StandardCharsets.UTF_8.name());
+            helper.setSubject(EmailTemplates.PAYMENT_CONFIRMATION.getSubject());
+            helper.setFrom("contact@magadiflo.com");
+            helper.setTo(destinationEmail);
+            helper.setText(htmlTemplate, true);
+
+            this.javaMailSender.send(mimeMessage);
+            log.info("Se ha enviado exitosamente un correo a {} con la plantilla {}", destinationEmail, templateName);
+        } catch (MessagingException e) {
+            log.warn("No se pudo enviar el correo de pago de confirmación a {}", destinationEmail);
+            e.printStackTrace();
+        }
+    }
+
+    @Async
+    public void sendOrderConfirmationEmail(String destinationEmail, String customerName, BigDecimal totalAmount, String orderReference, List<Product> products) {
+        try {
+            Map<String, Object> variablesMap = new HashMap<>();
+            variablesMap.put("customerName", customerName);
+            variablesMap.put("totalAmount", totalAmount);
+            variablesMap.put("orderReference", orderReference);
+            variablesMap.put("products", products);
+
+            Context context = new Context();
+            context.setVariables(variablesMap);
+
+            final String templateName = EmailTemplates.ORDER_CONFIRMATION.getTemplate();
+            String htmlTemplate = this.templateEngine.process(templateName, context);
+
+            MimeMessage mimeMessage = this.javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, MimeMessageHelper.MULTIPART_MODE_MIXED_RELATED, StandardCharsets.UTF_8.name());
+            helper.setSubject(EmailTemplates.ORDER_CONFIRMATION.getSubject());
+            helper.setFrom("contact@magadiflo.com");
+            helper.setTo(destinationEmail);
+            helper.setText(htmlTemplate, true);
+
+            this.javaMailSender.send(mimeMessage);
+            log.info("Envío exitoso de correo correo a {} con la plantilla {}", destinationEmail, templateName);
+        } catch (MessagingException e) {
+            log.warn("Error al enviar el correo de orden de confirmación a {}", destinationEmail);
+            e.printStackTrace();
+        }
+    }
+
+}
+````
+
+Como hemos creado métodos que usan la anotación `@Async`, debemos habilitar el uso de dichas anotaciones para el
+procesamiento asíncrono de los métodos anotados. En ese sentido, agregamos la anotación `@EnableAsync` a la clase
+principal de este microservicio.
+
+````java
+
+@EnableAsync
+@SpringBootApplication
+public class NotificationServiceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(NotificationServiceApplication.class, args);
+    }
+
+}
+````
+
+Los métodos que envían correo necesitan una plantilla cada uno para construir el cuerpo del mismo, en ese sentido,
+debemos crear un directorio `/resources/templates` y dentro de él las dos plantillas para construir el cuerpo de
+nuestros correos.
+
+`business-domain/notification-service/src/main/resources/templates/order-confirmation.html`
+
+````html
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Details</title>
+
+    <style>
+        body {
+          font-family: Arial, sans-serif;
+          line-height: 1.6;
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 0;
+        }
+
+        .container {
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+          background-color: #fff;
+          border-radius: 8px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+          color: #333;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 20px;
+        }
+
+        th, td {
+          padding: 12px;
+          border: 1px solid #ddd;
+          text-align: left;
+        }
+
+        th {
+          background-color: #007BFF;
+          color: #fff;
+        }
+
+        .footer {
+          margin-top: 20px;
+          padding-top: 10px;
+          border-top: 1px solid #ddd;
+          text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h1>Order Details</h1>
+    <p>Customer: <span th:text="${customerName}"></span></p>
+    <p>Order ID: <span th:text="${orderReference}"></span></p>
+
+    <table>
+        <thead>
+        <tr>
+            <th>Product Name</th>
+            <th>Quantity</th>
+            <th>Price</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr th:each="product : ${products}">
+            <td th:text="${product.name}"></td>
+            <td th:text="${product.quantity}"></td>
+            <td th:text="${product.price}"></td>
+        </tr>
+        </tbody>
+    </table>
+
+    <div class="footer">
+        <p>Total Amount: S/ <span th:text="${totalAmount}"></span></p>
+        <p>This is an automated message. Please do not reply to this email.</p>
+        <p>&copy; 2024 Magadiflo</span>. All rights reserved.</p>
+    </div>
+</div>
+</body>
+
+</html>
+````
+
+`business-domain/notification-service/src/main/resources/templates/payment-confirmation.html`
+
+````html
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Confirmation</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        p {
+            color: #555;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            color: #fff;
+            background-color: #007BFF;
+            border-radius: 5px;
+        }
+
+        .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h1>Payment Confirmation</h1>
+    <p>Dear <span th:text="${customerName}"></span>,</p>
+    <p>Your payment of S/ <span th:text="${amount}"></span> has been successfully processed.</p>
+    <p>Order reference: <span th:text="${orderReference}"></span></p>
+    <p>Thank you for choosing our service. If you have any questions, feel free to contact us.</p>
+
+    <div class="footer">
+        <p>This is an automated message. Please do not reply to this email.</p>
+        <p>&copy; 2024 Magadiflo. All rights reserved.</p>
+    </div>
+</div>
+</body>
+
+</html>
+````
