@@ -163,3 +163,97 @@ Para finalizar este apartado, las clases que crearemos `PaymentConfirmation` y `
 utilicemos como parámetro de los métodos anotados con `@KafkaListener`. Esto lo veremos más adelante cuando
 documentemos la clase `NotificationConsumer`.
 
+## Crea documentos, dtos, y enums
+
+Como estamos trabajando con `MongoDB` creamos nuestro documento `Notification` que estará mapeada a una colección
+llamada `notifications`. Recordemos que el `notifications` es como si fuera el nombre de la tabla en la base de datos.
+
+````java
+
+@ToString
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@Setter
+@Getter
+@Document(collection = "notifications")
+public class Notification {
+    @Id
+    private String id;
+    private NotificationType type;
+    private LocalDateTime notificationDate;
+    private OrderConfirmation orderConfirmation;
+    private PaymentConfirmation paymentConfirmation;
+}
+````
+
+El documento anterior usa dos records `OrderConfirmation` y `PaymentConfirmation`:
+
+````java
+public record OrderConfirmation(String orderReference,
+                                BigDecimal totalAmount,
+                                PaymentMethod paymentMethod,
+                                Customer customer,
+                                List<Product> products) {
+}
+````
+
+````java
+public record PaymentConfirmation(String orderReference,
+                                  BigDecimal amount,
+                                  PaymentMethod paymentMethod,
+                                  String customerFirstName,
+                                  String customerLastName,
+                                  String customerEmail) {
+}
+````
+
+El record `OrderConfirmation` usa dos records adicionales:
+
+````java
+public record Customer(String id,
+                       String firstName,
+                       String lastName,
+                       String email) {
+}
+````
+
+````java
+public record Product(Long productId,
+                      String name,
+                      String description,
+                      BigDecimal price,
+                      double quantity) {
+}
+````
+
+Finalmente, definiremos los enums que usaremos en la aplicación:
+
+````java
+
+@Getter
+public enum EmailTemplates {
+    PAYMENT_CONFIRMATION("payment-confirmation.html", "Pago procesado exitosamente"),
+    ORDER_CONFIRMATION("order-confirmation.html", "Confirmación de orden");
+
+    private final String template;
+    private final String subject;
+
+    EmailTemplates(String template, String subject) {
+        this.template = template;
+        this.subject = subject;
+    }
+}
+````
+
+````java
+public enum NotificationType {
+    ORDER_CONFIRMATION, PAYMENT_CONFIRMATION
+}
+````
+
+````java
+public enum PaymentMethod {
+    PAYPAL, CREDIT_CARD, VISA_CARD, MASTER_CARD, BITCOIN
+}
+````
