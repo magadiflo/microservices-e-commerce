@@ -1,0 +1,51 @@
+server:
+  port: 8085
+  error:
+    include-message: always
+
+spring:
+  data:
+    mongodb:
+      host: localhost
+      port: 27017
+      database: db_notifications
+      username: magadiflo
+      password: magadiflo
+      authentication-database: admin
+
+  kafka:
+    consumer:
+      bootstrap-servers: localhost:9092
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: '*'
+        spring.json.type.mapping: paymentNotificationToken:dev.magadiflo.notification.app.models.dtos.PaymentConfirmation, orderConfirmationToken:dev.magadiflo.notification.app.models.dtos.OrderConfirmation
+
+  mail:
+    host: localhost
+    port: 1025
+    username: magadiflo
+    password: magadiflo
+    default-encoding: UTF-8
+    properties:
+      mail:
+        mime:
+          charset: UTF-8
+        smtp:
+          trust: '*'
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
+          auth: true
+          starttls:
+            enable: true
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${vcap.application.instance_id:${spring.application.instance_id:${random.value}}}
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
