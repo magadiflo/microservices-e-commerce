@@ -257,3 +257,14 @@ public enum PaymentMethod {
     PAYPAL, CREDIT_CARD, VISA_CARD, MASTER_CARD, BITCOIN
 }
 ````
+
+## Crea repositorio con MongoRepository
+
+Como estamos trabajando con `MondoDB` y hemos agregado como dependencia al `pom.xml`
+`spring-boot-starter-data-mongodb`, vamos a crear nuestro repositorio para interactuar fácilmente con la base de datos
+no relacional.
+
+````java
+public interface NotificationRepository extends MongoRepository<Notification, String> {
+}
+````
