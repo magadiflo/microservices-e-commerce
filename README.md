@@ -185,3 +185,23 @@ Notar que en el servicio de `zookeeper` estamos haciendo uso del checkeo de salu
 - `test: ["CMD-SHELL", "nc -z localhost 2181 || exit 1"]`, utiliza el comando Netcat (nc) para verificar si el puerto
   2181 está abierto dentro del contenedor. Si el comando `nc -z localhost 2181` falla, se ejecuta `exit 1`, indicando un
   fallo en el healthcheck.
+
+## Configura Zipkin con Docker
+
+`Zipkin`, es un sistema de seguimiento distribuido. Ayuda a recopilar datos de tiempo necesarios para solucionar
+problemas de latencia en arquitecturas de servicios. Las características incluyen tanto la recopilación como la
+búsqueda de estos datos.
+
+Trabajaremos con `Zipkin` mediante contendor de docker, para eso crearemos el servicio de zipkin en el archivo de
+`compose.yml`.
+
+````yml
+services:
+  zipkin:
+    image: openzipkin/zipkin:3.4
+    container_name: c-ms-zipkin
+    ports:
+      - 9411:9411
+    networks:
+      - ms-e-commerce-net
+````
