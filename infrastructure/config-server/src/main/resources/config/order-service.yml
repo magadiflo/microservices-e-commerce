@@ -47,3 +47,8 @@ custom:
 logging:
   level:
     org.hibernate.SQL: DEBUG
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0

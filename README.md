@@ -208,8 +208,9 @@ services:
 
 ## Agrega dependencia de Zipkin a microservicios
 
-Agregaremos las dependencias de `Zipkin` al `gateway-server` y también a todos los microservicios de
-dominio: `customer`, `product`, `order`, `payment` y `notification` service.
+Agregaremos las dependencias de `Zipkin`  a todos los microservicios que deseemos rastrear. En nuestro caso agregaremos
+al `gateway-server`, `discovery-server` y a todos los microservicios de dominio: `customer`, `product`, `order`,
+`payment` y `notification` service.
 
 ````xml
 
@@ -232,4 +233,23 @@ dominio: `customer`, `product`, `order`, `payment` y `notification` service.
 
 Al agregar la dependencia de `Zipkin` utilizando `Spring Initializr`, en automático nos agrega la dependencia
 de `Actuator`, dado que Zipkin lo necesita para trabajar.
+
+## Agrega configuración de Zipkin a los microservicios
+
+A todos los microservicios que hemos agregado la dependencia de `Zipkin` le agregaremos las siguientes configuraciones
+en su archivo `.yml` ubicado en el servidor de configuraciones.
+
+````yml
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+````
+
+El valor `1.0` indica que todas las solicitudes serán rastreadas.
+
+Hay otra configuración que he usado en otros proyectos:
+`management.zipkin.tracing.endpoint=http://localhost:9411/api/v2/spans`, aquí no lo uso porque, por defecto, zipkin
+viene configurado con ese endpoint. Solo si el servidor de zipkin estuviera corriendo en otro puerto, allí sí debería
+usar esa configuración para cambiar la url.
 
