@@ -205,3 +205,31 @@ services:
     networks:
       - ms-e-commerce-net
 ````
+
+## Agrega dependencia de Zipkin a microservicios
+
+Agregaremos las dependencias de `Zipkin` al `gateway-server` y también a todos los microservicios de
+dominio: `customer`, `product`, `order`, `payment` y `notification` service.
+
+````xml
+
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.micrometer</groupId>
+        <artifactId>micrometer-tracing-bridge-brave</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>io.zipkin.reporter2</groupId>
+        <artifactId>zipkin-reporter-brave</artifactId>
+    </dependency>
+</dependencies>
+
+````
+
+Al agregar la dependencia de `Zipkin` utilizando `Spring Initializr`, en automático nos agrega la dependencia
+de `Actuator`, dado que Zipkin lo necesita para trabajar.
+
