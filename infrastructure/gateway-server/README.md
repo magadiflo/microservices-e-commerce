@@ -210,3 +210,71 @@ Notar que ya no usamos `localhost` con el puerto, dado que estmos trabajando con
 > nombre del microservicio a consumir, al momento de hacer la llamada nos va a mostrar un mensaje de error, que
 > no encuentra la ruta especificada.
 
+## Probando flujo completo de la aplicación
+
+Para realizar las pruebas levantamos todos nuestros microservicios. Tres microservicios levantaremos con más de una
+instancia.
+
+- `Customer-service`: 2 instancias
+- `Product-service`: 3 instancias
+- `Payment-service`: 2 instancias
+
+El orden para levantar los microservicios será el siguiente:
+
+1. Config Server
+2. Discovery Server
+3. Business domain (no importa el orden): customer, product, order, payment, notification
+4. Gateway Server
+
+## 1° Orden de compra
+
+````bash
+$ curl -v -X POST -H "Content-Type: application/json" -d "{\"amount\": 6890, \"paymentMethod\": \"CREDIT_CARD\", \"customerId\": \"668ecb2b7855023d09047b82\", \"products\": [{\"productId\": 1, \"quantity\": 10}, {\"productId\": 2, \"quantity\": 15}]}" http://localhost:8080/api/v1/orders
+>
+* upload completely sent off: 172 bytes
+< HTTP/1.1 201 Created
+< transfer-encoding: chunked
+< Location: /api/v1/orders/2
+< Content-Type: application/json
+< Date: Wed, 10 Jul 2024 18:05:58 GMT
+<
+2
+````
+
+Luego de realizar una solicitud de orden, veamos qué instancias se han ejecutado, para eso nos guiaremos de los puertos
+que se han usado.
+
+- `Customer-service`: 54889
+- `Product-service`: 55022
+- `Payment-service`: 55089
+
+Si revisamos el servidor de correo, veremos que nos han llevado dos correos: confirmación de la orden y la confirmación
+del pago.
+
+![01.test-all-flow.png](assets/01.test-all-flow.png)
+
+## 2° Orden de compra
+
+````bash
+$ curl -v -X POST -H "Content-Type: application/json" -d "{\"amount\": 2560, \"paymentMethod\": \"CREDIT_CARD\", \"customerId\": \"668ecb2b7855023d09047b82\", \"products\": [{\"productId\": 4, \"quantity\": 16}, {\"productId\": 3, \"quantity\": 4}]}" http://localhost:8080/api/v1/orders
+* upload completely sent off: 171 bytes
+< HTTP/1.1 201 Created
+< transfer-encoding: chunked
+< Location: /api/v1/orders/3
+< Content-Type: application/json
+< Date: Wed, 10 Jul 2024 18:12:32 GMT
+<
+3
+````
+
+Puertos utilizados por las llamadas internas a través del balanceo de carga:
+
+- `Customer-service`: 54901
+- `Product-service`: 54996
+- `Payment-service`: 55067
+
+Como observamos, al realizar una nueva petición, las instancias a las que se llaman son otras. De esta manera estamos
+comprobando que se está aplicando el balanceo de carga correctamente.
+
+Finalmente, si revisamos el servidor de correo veremos que nos habrá llegado los dos correos similares al anterior.
+
