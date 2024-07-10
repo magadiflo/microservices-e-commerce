@@ -160,3 +160,53 @@ public interface CustomerClient {
     Optional<CustomerResponse> findCustomer(@PathVariable String customerId);
 }
 ````
+
+## Config-server: Define puertos dinámicos en archivos de configuración
+
+Recordemos que en el microservicio `config-server` tenemos definidos los archivos de configuración de todos nuestros
+microservicios. Vamos a modificar los siguientes microservicios con el puerto en cero (0), eso indica que el puerto
+se deberá generar de manera aleatoria.
+
+Los archivos de configuración de los microservicios a modificar son: `customer-service.yml`, `notification-service.yml`,
+`order-service.yml`, `payment-service.yml` y `product-service.yml`. Cada uno de esos archivos deberá modificar el
+puerto con valor en cero, de la siguiente manera:
+
+````yml
+server:
+  port: 0
+````
+
+Con respecto al archivo de configuración del microservicio de order `order-service.yml`, debemos no solo agregar el
+puerto en cero, sino que modificar las rutas de los microservicios a llamar:
+
+````yml
+server:
+  port: 0
+
+custom:
+  config:
+    customer:
+      name: customer-service
+      path: /api/v1/customers
+    product:
+      url: http://product-service
+      path: /api/v1/products
+    payment:
+      url: http://payment-service
+      path: /api/v1/payments
+````
+
+Notar que en la configuración `custom.config.customer.name` estamos usando el nombre del microservicio a consumir. Aquí
+hemos definido a criterio propio el `name`, dado que el valor de esta configuración será usada por el cliente
+`FeignClient`. Mientras que las configuraciones de `product` y `payment` los dejamos con `url`, también a criterio
+propio, porque estas configuraciones están siendo usadas por `RestClient`.
+
+Notar que ya no usamos `localhost` con el puerto, dado que estmos trabajando con un servidor de descubrimiento como
+`Eureka Server`, aquí únicamente usamos el nombre de los microservicios con quienes nos vamos a comunicar.
+
+**Importante**
+> Un punto importante en este apartado es que en las configuraciones de `url` que están siendo usadas por el cliente
+> `RestClient` debemos usar el `http://` como prefijo, dado que si no lo usamos, es decir, colocamos únicamente el
+> nombre del microservicio a consumir, al momento de hacer la llamada nos va a mostrar un mensaje de error, que
+> no encuentra la ruta especificada.
+

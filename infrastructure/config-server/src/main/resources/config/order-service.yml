@@ -1,5 +1,5 @@
 server:
-  port: 8083
+  port: 0
   error:
     include-message: always
 
@@ -35,13 +35,13 @@ eureka:
 custom:
   config:
     customer:
-      url: http://localhost:8081
+      name: customer-service
       path: /api/v1/customers
     product:
-      url: http://localhost:8082
+      url: http://product-service
       path: /api/v1/products
     payment:
-      url: http://localhost:8084
+      url: http://payment-service
       path: /api/v1/payments
 
 logging:
