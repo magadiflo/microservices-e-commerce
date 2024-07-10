@@ -7,18 +7,24 @@ import dev.magadiflo.ecommerce.app.models.dtos.ProductResponse;
 import dev.magadiflo.ecommerce.app.services.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.net.URI;
 import java.util.List;
 
+@Slf4j
 @RequiredArgsConstructor
 @RestController
 @RequestMapping(path = "/api/v1/products")
 public class ProductController {
 
     private final ProductService productService;
+    private final Environment environment;
 
     @GetMapping
     public ResponseEntity<List<ProductResponse>> findAllProducts() {
@@ -39,6 +45,7 @@ public class ProductController {
 
     @PostMapping(path = "/purchase")
     public ResponseEntity<List<ProductPurchaseResponse>> purchaseProducts(@RequestBody List<ProductPurchaseRequest> request) {
+        log.info("Puerto llamado: {}", environment.getProperty("local.server.port"));
         return ResponseEntity.ok(this.productService.purchaseProducts(request));
     }
 
