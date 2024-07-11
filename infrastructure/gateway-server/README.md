@@ -310,3 +310,46 @@ spring:
 
 Notar que el realm `microservices-e-commerce` aún no lo hemos creado. Para crear el `realm` debemos ingresar al
 servidor de `Keycloak` a través de la url `http://localhost:8181`.
+
+## Creando Realm en Keycloak
+
+Ingresamos al servidor de keycloak y creamos el realm y las configuraciones necesarias para asegurar nuestra aplicación.
+
+1. Creamos el realm llamado `microservices-e-commerce`.
+2. Seleccionamos el realm creado y creamos un cliente llamado  `ms-ecommerce-api` con las siguientes configuraciones.
+
+   ![02.create-client.png](assets/02.create-client.png)
+
+3. Luego de crear el cliente, vamos a la pestaña `credentials` para obtener las credenciales que se generaron para este
+   cliente.
+
+   ![03.credentials-client.png](assets/03.credentials-client.png)
+
+## Agrega Configuración de seguridad en el Gateway Server
+
+Estamos trabajando con `Gateway Server` en su modo reactivo, dado que internamente `Gateway` usa `WebFlux`. Esto es
+porque hemos elegido trabajar con la dependencia reactiva de `Gateway Server`: `spring-cloud-starter-gateway`.
+Actualmente, existe una dependencia para trabajar con servlets que no es reactivo, esta dependencia es es
+`spring-cloud-starter-gateway-mvc`, pero en nuestro caso estamos trabajando con el modo reactivo.
+
+Como estamos trabajando con `WebFlux`, es decir, en modo reactivo, la configuración que hagamos de Spring Security
+será acorte al modo reactivo.
+
+````java
+
+@Configuration
+@EnableWebFluxSecurity
+public class SecurityConfig {
+    @Bean
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        http
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .authorizeExchange(exchanges -> exchanges
+                        .pathMatchers("/eureka/**").permitAll()
+                        .anyExchange().authenticated()
+                )
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+        return http.build();
+    }
+}
+````
