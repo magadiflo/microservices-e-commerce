@@ -353,3 +353,55 @@ public class SecurityConfig {
     }
 }
 ````
+
+## Probando microservicios con la seguridad
+
+Luego de haber configurado Keycloak y la seguridad en el servidor gateway, realizamos una petición a nuestra
+arquitectura de microservicios a través del `Gateway Server` sin enviar ninguna credencial.
+
+````bash
+$ curl -v http://localhost:8080/api/v1/products | jq
+>
+* Request completely sent off
+< HTTP/1.1 401 Unauthorized
+< WWW-Authenticate: Bearer
+< Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+< Pragma: no-cache
+< Expires: 0
+< X-Content-Type-Options: nosniff
+< X-Frame-Options: DENY
+< X-XSS-Protection: 0
+< Referrer-Policy: no-referrer
+< content-length: 0
+<
+````
+
+Como observamos, se está aplicando correctamente la seguridad que hemos establecido con Keycloak. Nos está arrojando
+un código de estado `401 Unauthrized`.
+
+## Probando con Client Credentials Grant Type
+
+El flujo que hemos implementado es del tipo `Client Credentials`, es decir no requerimos un usuario que se autentique
+en Keycloak, sino más bien, el propio cliente deberá autenticarse en keycloak, luego el servidor de autorización le
+asignará un token que el cliente usará para realizar la solicitud al backend y obtener los resultados deseados.
+
+Para realizar ese flujo, debemos realizar dos pasos:
+
+### 1° paso: Solicitar un access token
+
+![04.config-request.png](assets/04.config-request.png)
+
+Una vez configurado postman, presionamos en el botón para obtener un nuevo access token:
+
+![05.get-new-access-token.png](assets/05.get-new-access-token.png)
+
+### 2° paso: Use el access token para llamar a los recursos.
+
+Luego le damos en usar el token para que se almacene en postma y podamos realizar la petición sin problemas:
+
+![06.use-token.png](assets/06.use-token.png)
+
+Finalmente, realizamos la solicitud al backend y podemos observar que los resultados se muestran correctamente. Hemos
+implementado el grant type `Client Credentials` exitosamente.
+
+![07.request-successfully.png](assets/07.request-successfully.png)
