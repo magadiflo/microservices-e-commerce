@@ -253,3 +253,30 @@ Hay otra configuración que he usado en otros proyectos:
 viene configurado con ese endpoint. Solo si el servidor de zipkin estuviera corriendo en otro puerto, allí sí debería
 usar esa configuración para cambiar la url.
 
+---
+
+# Keycloak para asegurar microservicios
+
+---
+
+## Configura Keycloak con Docker
+
+Vamos a trabajar con `Keyclaok` para segurizar nuestros microservicios. Para eso necesitamos agregar un servicio en
+nuestro archivo `compose.yml` del servidor de `Keycloak`:
+
+````yml
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.2
+    container_name: c-ms-keycloak
+    restart: unless-stopped
+    command:
+      - start-dev
+    ports:
+      - 8181:8080
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    networks:
+      - ms-e-commerce-net
+````
