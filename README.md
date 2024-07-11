@@ -209,8 +209,8 @@ services:
 ## Agrega dependencia de Zipkin a microservicios
 
 Agregaremos las dependencias de `Zipkin`  a todos los microservicios que deseemos rastrear. En nuestro caso agregaremos
-al `gateway-server`, `discovery-server` y a todos los microservicios de dominio: `customer`, `product`, `order`,
-`payment` y `notification` service.
+al `gateway-server` y a todos los microservicios de dominio: `customer`, `product`, `order`, `payment` y al
+`notification` service.
 
 ````xml
 
