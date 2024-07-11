@@ -278,3 +278,35 @@ comprobando que se está aplicando el balanceo de carga correctamente.
 
 Finalmente, si revisamos el servidor de correo veremos que nos habrá llegado los dos correos similares al anterior.
 
+## Keycloak: Configurando la seguridad para el Gateway Server
+
+Vamos a segurizar nuestro servidor gateway, dado que todas las peticiones entran por ese punto, así que necesitamos
+agregar como dependencia en el `pom.xml` el `spring-boot-starter-oauth2-resource-server` para convertir al Gateway
+Server en un servidor de recursos. El servidor de recursos es uno de los elementos que conforman el framework o el
+estándar `OAuth2`.
+
+````xml
+
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+</dependencies>
+````
+
+Luego de agregar la dependencia, debemos agregar ciertas configuraciones en el archivo `gateway-server.yml` ubicado
+en el servidor de configuraciones. Esta configuración nos permitirá comunicarnos con nuestro servidor OAuth 2, o para
+ser más exactos con nuestro servidor de Keycloak:
+
+````yml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8181/realms/microservices-e-commerce
+````
+
+Notar que el realm `microservices-e-commerce` aún no lo hemos creado. Para crear el `realm` debemos ingresar al
+servidor de `Keycloak` a través de la url `http://localhost:8181`.
